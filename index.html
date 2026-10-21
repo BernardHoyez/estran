@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f3460" />
+  <meta name="description" content="Aide à l'interprétation de structures géologiques visibles sur l'estran" />
+  <title>Estran</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Estran</h1>
+      <span class="subtitle">Interprétation géologique de l'estran</span>
+    </header>
+
+    <div id="main">
+      <aside id="sidebar">
+        <!-- 1. Zone d'étude -->
+        <section id="sec-zone">
+          <h2>1. Zone d'étude</h2>
+          <div class="btn-group">
+            <button class="btn" id="btn-draw-zone">Dessiner le secteur</button>
+            <button class="btn" id="btn-clear-zone" disabled>Effacer</button>
+          </div>
+          <p class="help-text">Polygone ≤ 1 km de long. Largeur indicative ~100 m terre + 100 m mer.</p>
+          <div id="zone-info" class="status">Aucun secteur défini</div>
+        </section>
+
+        <!-- Fonds de carte (phase 1) -->
+        <section id="sec-basemap">
+          <h2>Fond de carte</h2>
+          <label class="control">
+            <span>Source</span>
+            <select id="basemap-select">
+              <option value="plan">IGN Plan V2</option>
+              <option value="ortho" selected>IGN BD Ortho</option>
+              <option value="osm">OpenStreetMap</option>
+            </select>
+          </label>
+        </section>
+
+        <!-- 2. Affichage zone restreinte -->
+        <section id="sec-relief" style="display:none">
+          <h2>2. Ombrage MNT LIDAR HD</h2>
+          <label class="control">
+            <span>Opacité <span id="val-opacity">0.65</span></span>
+            <input type="range" id="hs-opacity" min="0" max="1" step="0.05" value="0.65" />
+          </label>
+          <label class="control">
+            <span>Contraste <span id="val-contrast">1.2</span></span>
+            <input type="range" id="hs-contrast" min="0.5" max="2.5" step="0.1" value="1.2" />
+          </label>
+          <label class="control">
+            <span>Luminosité <span id="val-brightness">1.0</span></span>
+            <input type="range" id="hs-brightness" min="0.5" max="1.5" step="0.05" value="1.0" />
+          </label>
+          <label class="control">
+            <span>Azimut soleil (°)<span id="val-azimuth">315</span></span>
+            <input type="range" id="hs-azimuth" min="0" max="360" step="5" value="315" />
+          </label>
+          <label class="control">
+            <span>Exagération verticale <span id="val-exag">2.0</span></span>
+            <input type="range" id="hs-exag" min="0.5" max="8" step="0.25" value="2.0" />
+          </label>
+          <label class="control">
+            <span>Zoom min / max</span>
+            <div style="display:flex;gap:0.5rem">
+              <input type="number" id="zoom-min" min="13" max="18" value="13" style="width:60px" />
+              <input type="number" id="zoom-max" min="14" max="19" value="19" style="width:60px" />
+            </div>
+          </label>
+          <button class="btn" id="btn-apply-zoom">Appliquer zooms</button>
+        </section>
+
+        <!-- 3. Interprétation géologique -->
+        <section id="sec-geology" style="display:none">
+          <h2>3. Couches géologiques</h2>
+          <label class="control">
+            <span>Nom de l'entité</span>
+            <input type="text" id="layer-name" placeholder="ex. silex, faille…" />
+          </label>
+          <label class="control">
+            <span>Couleur</span>
+            <input type="color" id="layer-color" value="#e94560" />
+          </label>
+          <label class="control">
+            <span>Épaisseur (px)</span>
+            <input type="number" id="layer-weight" min="1" max="12" value="3" />
+          </label>
+          <div class="btn-group">
+            <button class="btn primary" id="btn-add-layer">Créer couche</button>
+            <button class="btn" id="btn-draw-feature" disabled>Dessiner</button>
+          </div>
+          <div id="layers-list"></div>
+        </section>
+
+        <!-- 4. Export -->
+        <section id="sec-export" style="display:none">
+          <h2>4. Export (zone restreinte)</h2>
+          <label class="control">
+            <span>Format</span>
+            <select id="export-format">
+              <option value="geojson">GeoJSON (vecteurs)</option>
+              <option value="gpkg">GeoPackage (expérimental)</option>
+              <option value="png">Image PNG (vue actuelle)</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Vue à exporter</span>
+            <select id="export-view">
+              <option value="current">Vue courante (synthèse)</option>
+              <option value="ortho">BD Ortho seule</option>
+              <option value="relief">MNT ombré seul</option>
+              <option value="geology">Géologie seule</option>
+            </select>
+          </label>
+          <button class="btn primary" id="btn-export">Exporter</button>
+          <p class="help-text">MBTiles raster complet n'est pas supporté côté client. GeoJSON + PNG couvrent la majorité des usages.</p>
+        </section>
+      </aside>
+
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-relief@1.7.0/dist/leaflet-relief.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then(reg => console.log('SW registered', reg.scope))
+          .catch(err => console.warn('SW failed', err));
+      });
+    }
+  </script>
+</body>
+</html>

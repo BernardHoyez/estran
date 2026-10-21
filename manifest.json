@@ -1,0 +1,24 @@
+{
+  "name": "Estran – Interprétation géologique de l'estran",
+  "short_name": "Estran",
+  "description": "Aide à l'interprétation de structures géologiques visibles sur l'estran",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#0f3460",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
