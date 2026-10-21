@@ -28,7 +28,7 @@
             <button class="btn" id="btn-draw-zone">Dessiner le secteur</button>
             <button class="btn" id="btn-clear-zone" disabled>Effacer</button>
           </div>
-          <p class="help-text">Polygone ≤ 1 km de long. Largeur indicative ~100 m terre + 100 m mer.</p>
+          <p class="help-text">Polygone ≤ 1 km de long. Largeur indicative ~100 m terre + 100 m mer. Cliquez « Dessiner le secteur », puis cliquez sur la carte (double-clic pour terminer).</p>
           <div id="zone-info" class="status">Aucun secteur défini</div>
         </section>
 
@@ -93,10 +93,18 @@
             <span>Épaisseur (px)</span>
             <input type="number" id="layer-weight" min="1" max="12" value="3" />
           </label>
+          <label class="control">
+            <span>Type de forme</span>
+            <select id="feature-type">
+              <option value="polyline">Ligne</option>
+              <option value="polygon">Polygone</option>
+            </select>
+          </label>
           <div class="btn-group">
             <button class="btn primary" id="btn-add-layer">Créer couche</button>
             <button class="btn" id="btn-draw-feature" disabled>Dessiner</button>
           </div>
+          <p class="help-text">Après « Dessiner », cliquez sur la carte. Double-clic pour terminer la forme.</p>
           <div id="layers-list"></div>
         </section>
 

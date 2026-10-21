@@ -59,40 +59,53 @@
   });
 
   // ---------- 1. Dessin de la zone ----------
-  let zoneDrawer = null;
+  let activeDrawHandler = null;
+
+  function stopDrawing() {
+    if (activeDrawHandler) {
+      activeDrawHandler.disable();
+      activeDrawHandler = null;
+    }
+    map.off(L.Draw.Event.CREATED);
+  }
 
   $('btn-draw-zone').addEventListener('click', () => {
-    if (zoneDrawer) {
-      map.removeControl(zoneDrawer);
-      zoneDrawer = null;
-    }
-    zoneDrawer = new L.Control.Draw({
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          showArea: true,
-          shapeOptions: { color: '#e94560', weight: 2, fillOpacity: 0.15 }
-        },
-        polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false
-      },
-      edit: false
-    });
-    map.addControl(zoneDrawer);
+    stopDrawing();
+
+    const polygonOptions = {
+      allowIntersection: false,
+      showArea: true,
+      shapeOptions: { color: '#e94560', weight: 2, fillOpacity: 0.15 },
+      guidelineDistance: 10,
+      metric: true
+    };
+
+    activeDrawHandler = new L.Draw.Polygon(map, polygonOptions);
+    activeDrawHandler.enable();
+
+    $('zone-info').textContent = 'Cliquez sur la carte pour tracer le polygone. Double-clic (ou clic sur le 1er point) pour terminer.';
+    $('zone-info').classList.remove('active');
+
     map.once(L.Draw.Event.CREATED, onZoneCreated);
   });
 
   function onZoneCreated(e) {
+    activeDrawHandler = null;
     const layer = e.layer;
     const geo = layer.toGeoJSON();
     const length = estimateLength(geo);
 
-    if (length > 1100) { // ~1 km + marge
+    if (length > 1100) {
       alert(`Le secteur fait environ ${Math.round(length)} m de long. Maximum autorisé : 1 000 m.`);
       map.removeLayer(layer);
+      $('zone-info').textContent = 'Aucun secteur défini';
       return;
     }
 
-    if (state.zoneLayer) map.removeLayer(state.zoneLayer);
+    if (state.zoneLayer) {
+      state.drawnItems.removeLayer(state.zoneLayer);
+      map.removeLayer(state.zoneLayer);
+    }
     state.zoneLayer = layer;
     state.zoneGeoJSON = geo;
     state.drawnItems.addLayer(layer);
@@ -102,16 +115,10 @@
     $('btn-clear-zone').disabled = false;
     $('btn-draw-zone').disabled = true;
 
-    if (zoneDrawer) {
-      map.removeControl(zoneDrawer);
-      zoneDrawer = null;
-    }
-
     enterRestrictedMode();
   }
 
   function estimateLength(geo) {
-    // Longueur approximative du plus grand côté ou de l'enveloppe
     const bbox = turf.bbox(geo);
     const [minX, minY, maxX, maxY] = bbox;
     const w = turf.distance([minX, minY], [maxX, minY], { units: 'meters' });
@@ -120,6 +127,7 @@
   }
 
   $('btn-clear-zone').addEventListener('click', () => {
+    stopDrawing();
     if (state.zoneLayer) {
       state.drawnItems.removeLayer(state.zoneLayer);
       map.removeLayer(state.zoneLayer);
@@ -310,33 +318,39 @@
     });
   }
 
-  let featureDrawer = null;
+  // Dessin d'entités géologiques : polyligne ou polygone
   $('btn-draw-feature').addEventListener('click', () => {
     if (!state.activeGeology) return;
-    if (featureDrawer) {
-      map.removeControl(featureDrawer);
-      featureDrawer = null;
-    }
+    stopDrawing();
+
     const info = state.geologyLayers[state.activeGeology];
-    featureDrawer = new L.Control.Draw({
-      draw: {
-        polyline: { shapeOptions: { color: info.color, weight: info.weight } },
-        polygon: { shapeOptions: { color: info.color, weight: info.weight, fillOpacity: 0.25 } },
-        rectangle: false, circle: false, marker: false, circlemarker: false
-      },
-      edit: { featureGroup: info.group }
-    });
-    map.addControl(featureDrawer);
+    const shapeType = ($('feature-type') && $('feature-type').value) || 'polyline';
+
+    const shapeOpts = {
+      color: info.color,
+      weight: info.weight,
+      fillOpacity: shapeType === 'polygon' ? 0.25 : 0,
+      opacity: 1
+    };
+
+    if (shapeType === 'polygon') {
+      activeDrawHandler = new L.Draw.Polygon(map, {
+        allowIntersection: false,
+        shapeOptions: shapeOpts
+      });
+    } else {
+      activeDrawHandler = new L.Draw.Polyline(map, {
+        shapeOptions: shapeOpts
+      });
+    }
+    activeDrawHandler.enable();
 
     map.once(L.Draw.Event.CREATED, (e) => {
+      activeDrawHandler = null;
       const layer = e.layer;
-      layer.setStyle({ color: info.color, weight: info.weight, fillOpacity: 0.25 });
+      layer.setStyle(shapeOpts);
       info.group.addLayer(layer);
       info.features.push(layer.toGeoJSON());
-      if (featureDrawer) {
-        map.removeControl(featureDrawer);
-        featureDrawer = null;
-      }
     });
   });
 
