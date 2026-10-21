@@ -49,6 +49,14 @@
         <section id="sec-relief" style="display:none">
           <h2>2. Ombrage MNT LIDAR HD</h2>
           <label class="control">
+            <span>Source ombrage</span>
+            <select id="relief-mode">
+              <option value="shadow" selected>IGN précalculé (recommandé)</option>
+              <option value="interactive">Interactif (azimut / exagération)</option>
+            </select>
+          </label>
+          <p id="relief-status" class="help-text">—</p>
+          <label class="control">
             <span>Opacité <span id="val-opacity">0.65</span></span>
             <input type="range" id="hs-opacity" min="0" max="1" step="0.05" value="0.65" />
           </label>

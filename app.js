@@ -36,7 +36,7 @@
 
   // ---------- Carte ----------
   const map = L.map('map', {
-    center: [48.4, -4.5],   // Bretagne / Finistère – zone d'estran typique
+    center: [48.85, 2.30],  // Île-de-France (couverture LiDAR HD confirmée)
     zoom: 12,
     minZoom: 8,
     maxZoom: 19,
@@ -165,6 +165,11 @@
 
     // Créer la couche relief LIDAR HD
     createReliefLayer();
+    // Forcer le redraw après le fitBounds
+    setTimeout(() => {
+      map.invalidateSize();
+      if (state.reliefLayer && state.reliefLayer.redraw) state.reliefLayer.redraw();
+    }, 300);
   }
 
   function leaveRestrictedMode() {
@@ -189,12 +194,21 @@
     $('btn-draw-feature').disabled = true;
   }
 
-  // Ombrage IGN précalculé (WMTS) – secours si leaflet-relief indisponible
+  // ---- Ombrage MNT LiDAR HD ----
+  // WMTS SHADOW = ombrage précalculé IGN (fiable, rapide)
+  // Mode interactif = calcul client via WMS bil32 (lent, rate-limité ~1 req/s)
   const IGN_SHADOW_URL =
     'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
     '&LAYER=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' +
     '&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM' +
     '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+
+  // Pane dédié au-dessus de l'ortho
+  if (!map.getPane('reliefPane')) {
+    map.createPane('reliefPane');
+    map.getPane('reliefPane').style.zIndex = 450;
+    map.getPane('reliefPane').style.pointerEvents = 'none';
+  }
 
   function createReliefLayer() {
     if (state.reliefLayer) {
@@ -203,13 +217,14 @@
     }
 
     const opacity = +$('hs-opacity').value;
+    const wantInteractive = $('relief-mode') && $('relief-mode').value === 'interactive';
     const hasPlugin =
       typeof L.gridLayer !== 'undefined' &&
       typeof L.gridLayer.relief === 'function' &&
       L.GridLayer.Relief &&
       L.GridLayer.Relief.elevationUrls;
 
-    if (hasPlugin) {
+    if (wantInteractive && hasPlugin) {
       try {
         state.reliefLayer = L.gridLayer.relief({
           mode: 'hillshade',
@@ -225,39 +240,47 @@
           maxZoom: 19,
           minZoom: 13,
           tileSize: 256,
-          zIndex: 400
+          pane: 'reliefPane'
         });
         state.reliefLayer.addTo(map);
         state.reliefMode = 'interactive';
         $('hs-azimuth').disabled = false;
         $('hs-exag').disabled = false;
-        console.log('Relief: mode interactif (MNT LiDAR HD + leaflet-relief)');
+        setReliefStatus('Mode interactif (WMS) — chargement lent, couverture partielle');
       } catch (err) {
-        console.warn('leaflet-relief erreur → fallback SHADOW', err);
-        addShadowFallback(opacity);
+        console.warn('leaflet-relief erreur → SHADOW', err);
+        addShadowLayer(opacity);
       }
     } else {
-      console.warn('leaflet-relief absent → fallback ombrage IGN précalculé');
-      addShadowFallback(opacity);
+      addShadowLayer(opacity);
     }
 
-    applyReliefFilters();
+    // Appliquer filtres après un court délai (conteneur DOM créé async)
+    setTimeout(applyReliefFilters, 100);
+    setTimeout(applyReliefFilters, 500);
   }
 
-  function addShadowFallback(opacity) {
+  function addShadowLayer(opacity) {
     state.reliefLayer = L.tileLayer(IGN_SHADOW_URL, {
       attribution: '© IGN LiDAR HD (ombrage)',
       maxNativeZoom: 18,
       maxZoom: 19,
-      minZoom: 13,
+      minZoom: 10,
       opacity: opacity,
-      zIndex: 400
+      pane: 'reliefPane',
+      errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      crossOrigin: true
     });
     state.reliefLayer.addTo(map);
     state.reliefMode = 'shadow';
-    // Azimut / exagération non applicables sur l'ombrage précalculé
     $('hs-azimuth').disabled = true;
     $('hs-exag').disabled = true;
+    setReliefStatus('Ombrage IGN précalculé (WMTS). Zones sans LiDAR HD = transparent.');
+  }
+
+  function setReliefStatus(msg) {
+    const el = $('relief-status');
+    if (el) el.textContent = msg;
   }
 
   function applyReliefFilters() {
@@ -267,18 +290,23 @@
     const el = state.reliefLayer.getContainer && state.reliefLayer.getContainer();
     if (el) {
       el.style.filter = `contrast(${contrast}) brightness(${brightness})`;
-      el.style.zIndex = '400';
     }
   }
 
-  // Sliders hillshade
-  ['hs-opacity', 'hs-azimuth', 'hs-exag'].forEach(id => {
+  // Opacité seule : pas de recréation de couche
+  $('hs-opacity').addEventListener('input', () => {
+    $('val-opacity').textContent = $('hs-opacity').value;
+    if (state.reliefLayer && state.reliefLayer.setOpacity) {
+      state.reliefLayer.setOpacity(+$('hs-opacity').value);
+    }
+  });
+
+  // Azimut / exagération : recréer uniquement en mode interactif
+  ['hs-azimuth', 'hs-exag'].forEach(id => {
     $(id).addEventListener('input', () => {
-      $('val-opacity').textContent = $('hs-opacity').value;
       $('val-azimuth').textContent = $('hs-azimuth').value;
       $('val-exag').textContent = $('hs-exag').value;
-      // Recréer la couche pour azimuth / exaggeration (le plugin ne les met pas à jour à chaud)
-      createReliefLayer();
+      if (state.reliefMode === 'interactive') createReliefLayer();
     });
   });
 
@@ -290,9 +318,9 @@
     });
   });
 
-  $('hs-opacity').addEventListener('input', () => {
-    if (state.reliefLayer) state.reliefLayer.setOpacity(+$('hs-opacity').value);
-  });
+  if ($('relief-mode')) {
+    $('relief-mode').addEventListener('change', () => createReliefLayer());
+  }
 
   $('btn-apply-zoom').addEventListener('click', () => {
     const zmin = Math.max(13, Math.min(18, +$('zoom-min').value));
