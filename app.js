@@ -189,42 +189,85 @@
     $('btn-draw-feature').disabled = true;
   }
 
-  function createReliefLayer() {
-    if (state.reliefLayer) map.removeLayer(state.reliefLayer);
+  // Ombrage IGN précalculé (WMTS) – secours si leaflet-relief indisponible
+  const IGN_SHADOW_URL =
+    'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
+    '&LAYER=IGNF_LIDAR-HD_MNT_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW' +
+    '&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM' +
+    '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 
-    const opts = {
-      mode: 'hillshade',
-      elevationUrl: L.GridLayer.Relief.elevationUrls.ignLidarHdMnt,
-      elevationTileDecoder: L.GridLayer.Relief.elevationTileDecoders.bil32,
-      attribution: L.GridLayer.Relief.elevationAttributions.ignLidarHd,
-      hillshadeAzimuth: +$('hs-azimuth').value,
-      hillshadeElevation: 45,
-      hillshadeExaggeration: +$('hs-exag').value,
-      opacity: +$('hs-opacity').value,
+  function createReliefLayer() {
+    if (state.reliefLayer) {
+      map.removeLayer(state.reliefLayer);
+      state.reliefLayer = null;
+    }
+
+    const opacity = +$('hs-opacity').value;
+    const hasPlugin =
+      typeof L.gridLayer !== 'undefined' &&
+      typeof L.gridLayer.relief === 'function' &&
+      L.GridLayer.Relief &&
+      L.GridLayer.Relief.elevationUrls;
+
+    if (hasPlugin) {
+      try {
+        state.reliefLayer = L.gridLayer.relief({
+          mode: 'hillshade',
+          elevationUrl: L.GridLayer.Relief.elevationUrls.ignLidarHdMnt,
+          elevationTileDecoder: L.GridLayer.Relief.elevationTileDecoders.bil32,
+          attribution: (L.GridLayer.Relief.elevationAttributions &&
+            L.GridLayer.Relief.elevationAttributions.ignLidarHd) || '© IGN LiDAR HD',
+          hillshadeAzimuth: +$('hs-azimuth').value,
+          hillshadeElevation: 45,
+          hillshadeExaggeration: +$('hs-exag').value,
+          opacity: opacity,
+          maxNativeZoom: 17,
+          maxZoom: 19,
+          minZoom: 13,
+          tileSize: 256,
+          zIndex: 400
+        });
+        state.reliefLayer.addTo(map);
+        state.reliefMode = 'interactive';
+        $('hs-azimuth').disabled = false;
+        $('hs-exag').disabled = false;
+        console.log('Relief: mode interactif (MNT LiDAR HD + leaflet-relief)');
+      } catch (err) {
+        console.warn('leaflet-relief erreur → fallback SHADOW', err);
+        addShadowFallback(opacity);
+      }
+    } else {
+      console.warn('leaflet-relief absent → fallback ombrage IGN précalculé');
+      addShadowFallback(opacity);
+    }
+
+    applyReliefFilters();
+  }
+
+  function addShadowFallback(opacity) {
+    state.reliefLayer = L.tileLayer(IGN_SHADOW_URL, {
+      attribution: '© IGN LiDAR HD (ombrage)',
       maxNativeZoom: 18,
       maxZoom: 19,
       minZoom: 13,
-      zIndex: 200
-    };
-
-    state.reliefLayer = L.gridLayer.relief(opts);
+      opacity: opacity,
+      zIndex: 400
+    });
     state.reliefLayer.addTo(map);
-
-    // Appliquer contraste / luminosité via CSS filter sur le conteneur
-    applyReliefFilters();
+    state.reliefMode = 'shadow';
+    // Azimut / exagération non applicables sur l'ombrage précalculé
+    $('hs-azimuth').disabled = true;
+    $('hs-exag').disabled = true;
   }
 
   function applyReliefFilters() {
     if (!state.reliefLayer) return;
     const contrast = $('hs-contrast').value;
     const brightness = $('hs-brightness').value;
-    // Leaflet GridLayer utilise des canvas ; on cible le pane
-    const pane = map.getPane('tilePane') || document.querySelector('.leaflet-tile-pane');
-    // On applique le filtre sur les tuiles du relief uniquement si possible
-    // Approche simple : filtre sur le conteneur de la couche
     const el = state.reliefLayer.getContainer && state.reliefLayer.getContainer();
     if (el) {
       el.style.filter = `contrast(${contrast}) brightness(${brightness})`;
+      el.style.zIndex = '400';
     }
   }
 

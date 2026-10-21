@@ -1,5 +1,5 @@
 /* Estran Service Worker – cache-busting versioned cache */
-const CACHE_VERSION = 'estran-v1.0.1-20261021';
+const CACHE_VERSION = 'estran-v1.0.2-20261021';
 const CACHE_NAME = `estran-${CACHE_VERSION}`;
 
 const PRECACHE = [
