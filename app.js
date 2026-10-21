@@ -58,46 +58,75 @@
     state.currentBasemap = key;
   });
 
-  // ---------- 1. Dessin de la zone ----------
-  let activeDrawHandler = null;
+  // ---------- 1. Dessin de la zone (tracé manuel fiable) ----------
+  let drawPts = [];           // L.LatLng[]
+  let drawMarkers = [];       // L.CircleMarker[]
+  let drawPolyline = null;    // L.Polyline guide
+  let drawingZone = false;
+  let drawingFeature = false;
+  let featurePts = [];
+  let featureMarkers = [];
+  let featurePolyline = null;
 
-  function stopDrawing() {
-    if (activeDrawHandler) {
-      activeDrawHandler.disable();
-      activeDrawHandler = null;
-    }
-    map.off(L.Draw.Event.CREATED);
+  function clearDrawGuides() {
+    drawMarkers.forEach(m => map.removeLayer(m));
+    drawMarkers = [];
+    if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+    drawPts = [];
   }
 
-  $('btn-draw-zone').addEventListener('click', () => {
-    stopDrawing();
+  function clearFeatureGuides() {
+    featureMarkers.forEach(m => map.removeLayer(m));
+    featureMarkers = [];
+    if (featurePolyline) { map.removeLayer(featurePolyline); featurePolyline = null; }
+    featurePts = [];
+  }
 
-    const polygonOptions = {
-      allowIntersection: false,
-      showArea: true,
-      shapeOptions: { color: '#e94560', weight: 2, fillOpacity: 0.15 },
-      guidelineDistance: 10,
-      metric: true
-    };
+  function stopDrawing() {
+    drawingZone = false;
+    drawingFeature = false;
+    map.doubleClickZoom.enable();
+    map.getContainer().style.cursor = '';
+    clearDrawGuides();
+    clearFeatureGuides();
+    const btnFin = $('btn-finish-draw');
+    if (btnFin) btnFin.style.display = 'none';
+  }
 
-    activeDrawHandler = new L.Draw.Polygon(map, polygonOptions);
-    activeDrawHandler.enable();
+  function updateDrawGuide() {
+    if (drawPolyline) map.removeLayer(drawPolyline);
+    if (drawPts.length >= 2) {
+      drawPolyline = L.polyline(drawPts, { color: '#e94560', weight: 2, dashArray: '6 4' }).addTo(map);
+    }
+  }
 
-    $('zone-info').textContent = 'Cliquez sur la carte pour tracer le polygone. Double-clic (ou clic sur le 1er point) pour terminer.';
-    $('zone-info').classList.remove('active');
+  function addDrawPoint(latlng) {
+    drawPts.push(latlng);
+    const m = L.circleMarker(latlng, {
+      radius: 5, color: '#fff', weight: 2, fillColor: '#e94560', fillOpacity: 1
+    }).addTo(map);
+    drawMarkers.push(m);
+    updateDrawGuide();
+    $('zone-info').textContent =
+      `${drawPts.length} point(s) — cliquez pour ajouter, puis « Terminer le tracé » (min. 3 points).`;
+  }
 
-    map.once(L.Draw.Event.CREATED, onZoneCreated);
-  });
-
-  function onZoneCreated(e) {
-    activeDrawHandler = null;
-    const layer = e.layer;
+  function finishZonePolygon() {
+    if (drawPts.length < 3) {
+      alert('Il faut au moins 3 points pour un polygone.');
+      return;
+    }
+    const latlngs = drawPts.slice();
+    // fermer le polygone
+    const layer = L.polygon(latlngs, {
+      color: '#e94560', weight: 2, fillOpacity: 0.15
+    });
     const geo = layer.toGeoJSON();
     const length = estimateLength(geo);
 
     if (length > 1100) {
       alert(`Le secteur fait environ ${Math.round(length)} m de long. Maximum autorisé : 1 000 m.`);
-      map.removeLayer(layer);
+      stopDrawing();
       $('zone-info').textContent = 'Aucun secteur défini';
       return;
     }
@@ -110,6 +139,8 @@
     state.zoneGeoJSON = geo;
     state.drawnItems.addLayer(layer);
 
+    stopDrawing();
+
     $('zone-info').textContent = `Secteur défini – longueur ≈ ${Math.round(length)} m`;
     $('zone-info').classList.add('active');
     $('btn-clear-zone').disabled = false;
@@ -117,6 +148,22 @@
 
     enterRestrictedMode();
   }
+
+  $('btn-draw-zone').addEventListener('click', () => {
+    stopDrawing();
+    drawingZone = true;
+    map.doubleClickZoom.disable();
+    map.getContainer().style.cursor = 'crosshair';
+    $('zone-info').textContent = 'Cliquez sur la carte pour placer les sommets (min. 3), puis « Terminer le tracé ».';
+    $('zone-info').classList.remove('active');
+    const btnFin = $('btn-finish-draw');
+    if (btnFin) btnFin.style.display = '';
+  });
+
+  $('btn-finish-draw') && $('btn-finish-draw').addEventListener('click', () => {
+    if (drawingZone) finishZonePolygon();
+    else if (drawingFeature) finishFeatureShape();
+  });
 
   function estimateLength(geo) {
     const bbox = turf.bbox(geo);
@@ -139,6 +186,15 @@
     $('zone-info').classList.remove('active');
     $('btn-clear-zone').disabled = true;
     $('btn-draw-zone').disabled = false;
+  });
+
+  // Clic carte : ajout de points en mode dessin
+  map.on('click', (e) => {
+    if (drawingZone) {
+      addDrawPoint(e.latlng);
+    } else if (drawingFeature) {
+      addFeaturePoint(e.latlng);
+    }
   });
 
   // ---------- 2. Mode restreint + Hillshade ----------
@@ -389,40 +445,56 @@
     });
   }
 
-  // Dessin d'entités géologiques : polyligne ou polygone
-  $('btn-draw-feature').addEventListener('click', () => {
-    if (!state.activeGeology) return;
-    stopDrawing();
+  // Dessin d'entités géologiques : tracé manuel (ligne ou polygone)
+  function addFeaturePoint(latlng) {
+    featurePts.push(latlng);
+    const info = state.geologyLayers[state.activeGeology];
+    const m = L.circleMarker(latlng, {
+      radius: 4, color: '#fff', weight: 1, fillColor: info.color, fillOpacity: 1
+    }).addTo(map);
+    featureMarkers.push(m);
+    if (featurePolyline) map.removeLayer(featurePolyline);
+    if (featurePts.length >= 2) {
+      featurePolyline = L.polyline(featurePts, {
+        color: info.color, weight: info.weight, dashArray: '4 4'
+      }).addTo(map);
+    }
+  }
 
+  function finishFeatureShape() {
+    if (!state.activeGeology) return;
     const info = state.geologyLayers[state.activeGeology];
     const shapeType = ($('feature-type') && $('feature-type').value) || 'polyline';
-
+    const minPts = shapeType === 'polygon' ? 3 : 2;
+    if (featurePts.length < minPts) {
+      alert(`Il faut au moins ${minPts} points.`);
+      return;
+    }
     const shapeOpts = {
       color: info.color,
       weight: info.weight,
       fillOpacity: shapeType === 'polygon' ? 0.25 : 0,
       opacity: 1
     };
-
+    let layer;
     if (shapeType === 'polygon') {
-      activeDrawHandler = new L.Draw.Polygon(map, {
-        allowIntersection: false,
-        shapeOptions: shapeOpts
-      });
+      layer = L.polygon(featurePts.slice(), shapeOpts);
     } else {
-      activeDrawHandler = new L.Draw.Polyline(map, {
-        shapeOptions: shapeOpts
-      });
+      layer = L.polyline(featurePts.slice(), shapeOpts);
     }
-    activeDrawHandler.enable();
+    info.group.addLayer(layer);
+    info.features.push(layer.toGeoJSON());
+    stopDrawing();
+  }
 
-    map.once(L.Draw.Event.CREATED, (e) => {
-      activeDrawHandler = null;
-      const layer = e.layer;
-      layer.setStyle(shapeOpts);
-      info.group.addLayer(layer);
-      info.features.push(layer.toGeoJSON());
-    });
+  $('btn-draw-feature').addEventListener('click', () => {
+    if (!state.activeGeology) return;
+    stopDrawing();
+    drawingFeature = true;
+    map.doubleClickZoom.disable();
+    map.getContainer().style.cursor = 'crosshair';
+    const btnFin = $('btn-finish-draw');
+    if (btnFin) btnFin.style.display = '';
   });
 
   // ---------- 4. Export ----------

@@ -26,9 +26,10 @@
           <h2>1. Zone d'étude</h2>
           <div class="btn-group">
             <button class="btn" id="btn-draw-zone">Dessiner le secteur</button>
+            <button class="btn primary" id="btn-finish-draw" style="display:none">Terminer le tracé</button>
             <button class="btn" id="btn-clear-zone" disabled>Effacer</button>
           </div>
-          <p class="help-text">Polygone ≤ 1 km de long. Largeur indicative ~100 m terre + 100 m mer. Cliquez « Dessiner le secteur », puis cliquez sur la carte (double-clic pour terminer).</p>
+          <p class="help-text">Polygone ≤ 1 km. Cliquez « Dessiner », placez au moins 3 points sur la carte, puis « Terminer le tracé ».</p>
           <div id="zone-info" class="status">Aucun secteur défini</div>
         </section>
 
@@ -112,7 +113,7 @@
             <button class="btn primary" id="btn-add-layer">Créer couche</button>
             <button class="btn" id="btn-draw-feature" disabled>Dessiner</button>
           </div>
-          <p class="help-text">Après « Dessiner », cliquez sur la carte. Double-clic pour terminer la forme.</p>
+          <p class="help-text">Après « Dessiner », cliquez sur la carte pour les sommets, puis « Terminer le tracé ».</p>
           <div id="layers-list"></div>
         </section>
 
